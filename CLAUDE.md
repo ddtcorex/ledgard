@@ -160,5 +160,5 @@ Save current month's budgets as a template for reuse:
 - Vite proxies `/api` to `http://worker:8787` via `LEDGARD_API_PROXY_TARGET`
 - Access the app at `https://ledgard.test/`
 - Health check at `https://ledgard.test/api/health`
-- Cron trigger runs daily at midnight UTC (`wrangler.toml` config)
+- Cron trigger runs daily at midnight UTC (`wrangler.toml.example` config)
 - Scheduled transactions are processed by the Worker cron handler

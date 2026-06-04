@@ -4,9 +4,9 @@ Ledgard is a single-ledger family finance web application. It is designed as a s
 
 ## Stack
 
-- Frontend: React, Vite, TypeScript, Tailwind CSS, PWA.
+- Frontend: React 19, Vite, TypeScript, Tailwind CSS, TanStack Query, React Router v7, PWA.
 - Backend: Hono on Cloudflare Workers.
-- Database: Cloudflare D1 SQLite.
+- Database: Cloudflare D1 (SQLite).
 - Hosting: Cloudflare Workers Assets.
 - Auth: Cloudflare Access in production, `DEV_USER_EMAIL` fallback only in local development.
 - Local orchestration: Govard.
@@ -18,9 +18,11 @@ Ledgard is a single-ledger family finance web application. It is designed as a s
 - Transaction ledger: income, expense, transfer, loan, debt, debt collection, repayment.
 - Category hierarchy: strict parent -> child.
 - Shared and individual monthly budgets.
+- Recurring budgets: auto-create budgets on monthly, quarterly, or yearly schedules via Worker cron.
+- Budget templates: save current budgets as reusable templates (personal or shared).
 - Period locking through D1 triggers.
 - Scheduled recurring transactions via Worker cron.
-- English default UI, Vietnamese supported in Settings.
+- English and Vietnamese UI (switchable in Settings).
 - Currency setting for common currencies: `USD`, `VND`, `EUR`, `GBP`, `JPY`, `SGD`, `AUD`, `CAD`.
 
 ## Project Layout
@@ -33,8 +35,10 @@ src/shared/              Shared types and finance utilities
 tests/                   Unit tests
 design/                  Design system and generated prototypes
 docs/                    Product specification and implementation plan
-wrangler.toml            Cloudflare Worker/D1/Assets config
-.govard.yml              Govard local environment config
+wrangler.toml.example     Cloudflare Worker/D1/Assets config template
+.dev.vars.example     Local dev environment vars template
+.govard.yml           Govard local environment config
+.govard/              Govard project overrides
 .govard/                 Govard project overrides
 ```
 
@@ -159,6 +163,8 @@ Schema files:
 - [migrations/0002_triggers_indexes.sql](migrations/0002_triggers_indexes.sql)
 - [migrations/0003_seed_defaults.sql](migrations/0003_seed_defaults.sql)
 
+See [wrangler.toml.example](wrangler.toml.example) for the production configuration template.
+
 Period lock:
 
 - `system_settings.global_lock_until_date` controls the lock date.
@@ -198,7 +204,7 @@ Create the D1 database:
 npx wrangler d1 create ledgard-db
 ```
 
-Copy the generated `database_id` into [wrangler.toml](wrangler.toml):
+Copy the generated `database_id` into your `wrangler.toml`. See [wrangler.toml.example](wrangler.toml.example) for the full configuration template:
 
 ```toml
 [[d1_databases]]
@@ -207,11 +213,11 @@ database_name = "ledgard-db"
 database_id = "YOUR_REAL_DATABASE_ID"
 ```
 
-`wrangler.toml` should be committed because it defines the Worker entrypoint, bindings, assets, and cron. Do not commit secrets in it.
+`wrangler.toml` should NOT be committed. Use `wrangler.toml.example` as reference.
 
 ### 3. Confirm Production Vars
 
-Production vars in [wrangler.toml](wrangler.toml) should be:
+Production vars in your `wrangler.toml` should match this template from [wrangler.toml.example](wrangler.toml.example):
 
 ```toml
 [vars]
@@ -283,7 +289,7 @@ Wrangler will upload:
 
 - Worker API from `src/worker/index.ts`.
 - Static assets from `dist/client`.
-- Cron trigger from `wrangler.toml`.
+- Cron trigger from your `wrangler.toml`.
 - D1 binding named `DB`.
 
 ### 8. Configure Custom Domain Or Route
@@ -406,7 +412,7 @@ WHERE condition;
 **Authentication issues:**
 
 - The production Worker URL may return `401 Missing Cloudflare Access identity` until Cloudflare Access is configured. `/api/health` remains public for health checks.
-- Local Govard dev uses `.dev.vars` with `ENVIRONMENT=development` and `DEV_USER_EMAIL`, which overrides production vars from `wrangler.toml`.
+- Local Govard dev uses `.dev.vars` with `ENVIRONMENT=development` and `DEV_USER_EMAIL`. See `.dev.vars.example` for the template.
 
 **Network issues:**
 
@@ -418,7 +424,7 @@ curl -4 -k https://ledgard.test/api/health
 
 ## Recurring Transactions
 
-Cron is configured in [wrangler.toml](wrangler.toml):
+Cron is configured in [wrangler.toml.example](wrangler.toml.example):
 
 ```toml
 [triggers]
@@ -428,6 +434,41 @@ crons = ["0 0 * * *"]
 The scheduled Worker scans active scheduled transactions and inserts due ledger entries.
 
 Miniflare local dev does not automatically trigger scheduled Workers. Test cron behavior through the service function or Wrangler scheduled testing mode when needed.
+
+## Recurring Budgets
+
+Ledgard supports recurring budgets that automatically create budgets on a schedule:
+
+- **Monthly**: Creates budget every month
+- **Quarterly**: Creates budget every 3 months (Jan, Apr, Jul, Oct)
+- **Yearly**: Creates budget once per year
+
+Recurring budgets are processed by the Worker cron handler (runs daily at midnight UTC). The system uses idempotency tracking via the `recurring_budget_runs` table to prevent duplicate budget creation.
+
+### API Endpoints
+
+- `GET /api/recurring-budgets` - List all recurring budgets
+- `POST /api/recurring-budgets` - Create new recurring budget (admin only)
+- `PATCH /api/recurring-budgets/:id` - Update recurring budget (admin only)
+- `DELETE /api/recurring-budgets/:id` - Delete recurring budget (admin only)
+
+## Budget Templates
+
+Save current month's budgets as a template for reuse:
+
+- **Personal templates** - Visible only to creator
+- **Shared templates** - Visible to all members (admin only)
+- Apply template to any future month
+- Prevents duplicate budgets when applying template multiple times
+
+### API Endpoints
+
+- `GET /api/budget-templates` - List templates (user's + shared)
+- `GET /api/budget-templates/:id/items` - Get template items
+- `POST /api/budget-templates` - Create template (admin only)
+- `PATCH /api/budget-templates/:id` - Update template (admin only)
+- `DELETE /api/budget-templates/:id` - Delete template (admin only)
+- `POST /api/budget-templates/:id/apply` - Apply template to target month (admin only)
 
 ## Production Maintenance
 
@@ -501,7 +542,7 @@ govard logs -f
 ## Notes
 
 - All local development uses Govard for consistent environment setup
-- `wrangler.toml` contains a placeholder D1 id until you create the real Cloudflare D1 database
+- `wrangler.toml.example` contains a template; `wrangler.toml` with real D1 id should NOT be committed
 - Seed data is for development and MVP smoke testing
 - Production seed files such as `seeds/production_vi.sql` are local/private bootstrap files and should not be pushed to git
 - Currency switching changes the app/base display setting. It does not perform historical FX conversion

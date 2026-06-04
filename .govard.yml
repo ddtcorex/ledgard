@@ -1,0 +1,16 @@
+project_name: ledgard
+# Govard does not currently expose a generic Vite/React/Node profile here.
+# This selects the Node 24 runtime profile only; the app itself is React + Vite.
+framework: nextjs
+domain: ledgard.test
+stack:
+    web_root: /
+    node_version: "24"
+    services:
+        web_server: none
+        db: none
+        cache: none
+        search: none
+        queue: none
+    features:
+        livereload: false

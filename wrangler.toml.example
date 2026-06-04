@@ -1,0 +1,21 @@
+name = "ledgard"
+main = "src/worker/index.ts"
+compatibility_date = "2024-12-18"
+
+[vars]
+ENVIRONMENT = "development"
+DEFAULT_LOCALE = "en"
+DEFAULT_CURRENCY = "USD"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ledgard-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[triggers]
+crons = ["0 0 * * *"]

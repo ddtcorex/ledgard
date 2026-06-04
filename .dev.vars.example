@@ -1,0 +1,4 @@
+ENVIRONMENT=development
+DEV_USER_EMAIL=admin@ledgard.local
+DEFAULT_LOCALE=en
+DEFAULT_CURRENCY=USD

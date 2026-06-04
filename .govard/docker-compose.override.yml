@@ -1,0 +1,25 @@
+# Govard override for Ledgard's Vite + Wrangler local stack.
+# Govard's Next.js profile is used only to get a Node 24 base container.
+# This override runs Vite and adds a Worker sidecar for the Hono/Cloudflare API.
+services:
+  web:
+    command: npm run dev:govard
+    environment:
+      - NODE_ENV=development
+      - PORT=80
+      - LEDGARD_API_PROXY_TARGET=http://worker:8787
+      - LEDGARD_ALLOWED_HOSTS=ledgard.test
+    depends_on:
+      - worker
+
+  worker:
+    image: node:24
+    working_dir: /app
+    user: root
+    volumes:
+      - .:/app
+    command: npm run dev:worker:govard
+    environment:
+      - NODE_ENV=development
+    networks:
+      - govard-net

@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #191c1d;
+  background: #f8fafc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #f8fafc;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid #006a61;
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+@layer components {
+  .surface-card {
+    @apply rounded-lg border border-border-subtle bg-surface-container-lowest;
+  }
+
+  .field {
+    @apply min-h-12 w-full rounded border border-border-subtle bg-surface-container-lowest px-3 py-2 text-body-md text-on-surface outline-none transition-colors focus:border-secondary;
+  }
+
+  select.field {
+    @apply pr-10 appearance-none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%2340484b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6' /%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1rem 1rem;
+  }
+
+  .label {
+    @apply text-label-caps font-bold uppercase tracking-[0.05em] text-on-surface-variant;
+  }
+
+  .icon-button {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary;
+  }
+
+  .icon-button-danger {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-danger-crisp/10 hover:text-danger-crisp;
+  }
+
+  .action-group {
+    @apply flex items-center rounded-full border border-border-subtle bg-surface-container-lowest shadow-sm;
+  }
+
+  .action-group-btn {
+    @apply flex h-8 w-8 items-center justify-center text-on-surface-variant transition-colors hover:bg-surface-container hover:text-primary first:rounded-l-full last:rounded-r-full;
+  }
+  
+  .action-group-btn.danger {
+    @apply hover:bg-danger-crisp/10 hover:text-danger-crisp;
+  }
+
+  .action-group-divider {
+    @apply h-4 w-[1px] bg-border-subtle;
+  }
+}
+
+/* Hide number input spinners for clean amount display */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Hide scrollbar for clean PWA look on mobile */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

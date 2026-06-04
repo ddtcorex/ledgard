@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Ledgard">
+  <rect width="512" height="512" rx="96" fill="#003441"/>
+  <path d="M78 108h68v232h132v64H78V108Z" fill="#ffffff"/>
+  <path d="M206 108h168v60H270v172h104v-52h-78v-56h138v172H206V108Z" fill="#86f2e4"/>
+</svg>

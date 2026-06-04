@@ -540,3 +540,31 @@ govard logs -f
 - Production seed files such as `seeds/production_vi.sql` are local/private bootstrap files and should not be pushed to git
 - Currency switching changes the app/base display setting. It does not perform historical FX conversion
 - The MVP debt/loan model uses ledger transaction types only; it does not yet have separate counterparty or obligation tables
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Setup
+
+See [Local Setup](#local-setup) section above for prerequisites and setup instructions.
+
+### Code Quality
+
+Before submitting a PR, ensure:
+
+```bash
+govard tool npm run typecheck   # TypeScript passes
+govard tool npm run test         # All tests pass
+govard tool npm run build        # Build succeeds
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

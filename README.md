@@ -33,19 +33,12 @@ src/client/              React app
 src/worker/              Hono Worker API and cron handler
 src/shared/              Shared types and finance utilities
 tests/                   Unit tests
-design/                  Design system and generated prototypes
-docs/                    Product specification and implementation plan
+docs/                    Product specification
 wrangler.toml.example     Cloudflare Worker/D1/Assets config template
 .dev.vars.example     Local dev environment vars template
 .govard.yml           Govard local environment config
 .govard/              Govard project overrides
-.govard/                 Govard project overrides
 ```
-
-Planning documents:
-
-- [docs/SPECS.md](docs/SPECS.md)
-- [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
 ## Local Setup
 

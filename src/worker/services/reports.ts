@@ -1,4 +1,4 @@
-import { calculateAvailableCash, calculateNetWorth, isReportableExpense } from "../../shared/finance/calculations";
+import { calculateAvailableCash, calculateNetWorth } from "../../shared/finance/calculations";
 import type { Account, CategoryReportData, IncomeExpenseData, MemberReportData, OverviewReport, TransactionView } from "../../shared/types/domain";
 import { all, first } from "../db/d1";
 import type { Env } from "../env";
@@ -78,9 +78,15 @@ export async function getDebtReport(env: Env, from: string, to: string): Promise
 
 export async function getOverviewReport(env: Env, from: string, to: string): Promise<OverviewReport> {
   const accounts = await listAccounts(env);
-  const transactions = await listTransactions(env, { from, to, limit: 500 });
   const recentTransactions = await listTransactions(env, { limit: 10 });
   const liabilities = await getDebtAndLoanTotals(env);
+
+  // Use SQL aggregate queries to avoid fetching all transactions (which would hit 200 limit)
+  const [cashflow, categoryDistribution, memberContribution] = await Promise.all([
+    getCashflowFromDb(env, from, to),
+    getCategoryDistributionFromDb(env, from, to),
+    getMemberContributionFromDb(env, from, to)
+  ]);
 
   return {
     available_cash: calculateAvailableCash(accounts),
@@ -88,9 +94,9 @@ export async function getOverviewReport(env: Env, from: string, to: string): Pro
     liquid_breakdown: accounts
       .filter((account) => account.is_active && (account.type === "cash" || account.type === "bank" || account.type === "savings"))
       .map((account) => ({ account_id: account.id, name: account.name, type: account.type, balance: account.current_balance })),
-    category_distribution: buildCategoryDistribution(transactions),
-    member_contribution: buildMemberContribution(transactions),
-    cashflow: buildCashflow(transactions),
+    category_distribution: categoryDistribution,
+    member_contribution: memberContribution,
+    cashflow: cashflow,
     recent_transactions: recentTransactions
   };
 }
@@ -121,50 +127,84 @@ async function getDebtAndLoanTotals(env: Env): Promise<{ activeLoans: number; ac
   };
 }
 
-function buildCategoryDistribution(transactions: TransactionView[]): OverviewReport["category_distribution"] {
-  const map = new Map<string, { category_id: string; name: string; amount: number; color: string | null }>();
-  for (const transaction of transactions) {
-    if (!isReportableExpense(transaction.type) || !transaction.category_id) {
-      continue;
-    }
-    // Use actual category_id (child category) instead of parent for detailed view
-    const id = transaction.category_id;
-    const name = transaction.category_name ?? "Uncategorized";
-    const current = map.get(id) ?? { category_id: id, name, amount: 0, color: null };
-    current.amount += transaction.amount;
-    map.set(id, current);
-  }
-  return [...map.values()].sort((a, b) => b.amount - a.amount);
+async function getCashflowFromDb(env: Env, from: string, to: string): Promise<OverviewReport["cashflow"]> {
+  const rows = await all<{ date: string; income: number; expense: number }>(
+    env.DB,
+    `
+      SELECT
+        transaction_date AS date,
+        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) AS income,
+        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) AS expense
+      FROM transactions
+      WHERE transaction_date >= ?1 AND transaction_date <= ?2
+        AND type IN ('income', 'expense')
+      GROUP BY transaction_date
+      ORDER BY transaction_date ASC
+    `,
+    from,
+    to
+  );
+  return rows;
 }
 
-function buildMemberContribution(transactions: TransactionView[]): OverviewReport["member_contribution"] {
-  const map = new Map<string, { member_id: string; name: string; amount: number }>();
-  for (const transaction of transactions) {
-    if (!isReportableExpense(transaction.type)) {
-      continue;
-    }
-    const current = map.get(transaction.member_id) ?? { member_id: transaction.member_id, name: transaction.member_name, amount: 0 };
-    current.amount += transaction.amount;
-    map.set(transaction.member_id, current);
-  }
-  return [...map.values()].sort((a, b) => b.amount - a.amount);
+async function getCategoryDistributionFromDb(env: Env, from: string, to: string): Promise<OverviewReport["category_distribution"]> {
+  const rows = await all<{ category_id: string; name: string; amount: number; color: string | null }>(
+    env.DB,
+    `
+      SELECT
+        c.id AS category_id,
+        c.name,
+        SUM(t.amount) AS amount,
+        c.color
+      FROM transactions t
+      JOIN categories c ON t.category_id = c.id
+      WHERE t.transaction_date >= ?1 AND t.transaction_date <= ?2
+        AND t.type = 'expense'
+        AND c.id IS NOT NULL
+      GROUP BY c.id
+      ORDER BY amount DESC
+    `,
+    from,
+    to
+  );
+  return rows;
 }
 
-function buildCashflow(transactions: TransactionView[]): OverviewReport["cashflow"] {
-  const map = new Map<string, { date: string; income: number; expense: number }>();
-  for (const transaction of transactions) {
-    if (transaction.type !== "income" && transaction.type !== "expense") {
-      continue;
-    }
-    const current = map.get(transaction.transaction_date) ?? { date: transaction.transaction_date, income: 0, expense: 0 };
-    if (transaction.type === "income") {
-      current.income += transaction.amount;
-    } else {
-      current.expense += transaction.amount;
-    }
-    map.set(transaction.transaction_date, current);
-  }
-  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+async function getMemberContributionFromDb(env: Env, from: string, to: string): Promise<OverviewReport["member_contribution"]> {
+  const rows = await all<{ member_id: string; name: string; amount: number }>(
+    env.DB,
+    `
+      SELECT
+        m.id AS member_id,
+        m.name,
+        SUM(t.amount) AS amount
+      FROM transactions t
+      JOIN members m ON t.member_id = m.id
+      WHERE t.transaction_date >= ?1 AND t.transaction_date <= ?2
+        AND t.type = 'expense'
+      GROUP BY m.id
+      ORDER BY amount DESC
+    `,
+    from,
+    to
+  );
+  return rows;
+}
+
+async function getIncomeExpenseTotals(env: Env, from: string, to: string): Promise<{ income: number; expense: number }> {
+  const row = await first<{ income: number; expense: number }>(
+    env.DB,
+    `
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) AS income,
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense
+      FROM transactions
+      WHERE transaction_date >= ?1 AND transaction_date <= ?2
+    `,
+    from,
+    to
+  );
+  return { income: row?.income ?? 0, expense: row?.expense ?? 0 };
 }
 
 export async function getIncomeExpenseReport(
@@ -174,26 +214,24 @@ export async function getIncomeExpenseReport(
   compareFrom?: string,
   compareTo?: string
 ): Promise<IncomeExpenseData> {
-  const transactions = await listTransactions(env, { from, to, limit: 1000 });
-
+  // Use SQL aggregation for totals - no 200 limit issue
+  const currentTotals = await getIncomeExpenseTotals(env, from, to);
   const current = {
-    income: transactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0),
-    expense: transactions.filter((t) => isReportableExpense(t.type)).reduce((sum, t) => sum + t.amount, 0),
-    net: 0
+    income: currentTotals.income,
+    expense: currentTotals.expense,
+    net: currentTotals.income - currentTotals.expense
   };
-  current.net = current.income - current.expense;
 
   if (compareFrom && compareTo) {
-    const compareTransactions = await listTransactions(env, { from: compareFrom, to: compareTo, limit: 1000 });
+    const compareTotals = await getIncomeExpenseTotals(env, compareFrom, compareTo);
     const comparison = {
-      income: compareTransactions.filter((t) => t.type === "income").reduce((sum, t) => sum + t.amount, 0),
-      expense: compareTransactions.filter((t) => isReportableExpense(t.type)).reduce((sum, t) => sum + t.amount, 0),
-      net: 0,
+      income: compareTotals.income,
+      expense: compareTotals.expense,
+      net: compareTotals.income - compareTotals.expense,
       incomeChange: 0,
       expenseChange: 0,
       netChange: 0
     };
-    comparison.net = comparison.income - comparison.expense;
     comparison.incomeChange = comparison.income === 0 ? 0 : ((current.income - comparison.income) / comparison.income) * 100;
     comparison.expenseChange = comparison.expense === 0 ? 0 : ((current.expense - comparison.expense) / comparison.expense) * 100;
     comparison.netChange = comparison.net === 0 ? 0 : ((current.net - comparison.net) / comparison.net) * 100;
@@ -204,74 +242,106 @@ export async function getIncomeExpenseReport(
   return { current };
 }
 
+interface CategorySummary {
+  category_id: string;
+  name: string;
+  amount: number;
+  count: number;
+  percentage: number;
+}
+
+async function getCategoryTotalsFromDb(env: Env, from: string, to: string): Promise<CategorySummary[]> {
+  const rows = await all<{ category_id: string; name: string; amount: number; count: number }>(
+    env.DB,
+    `
+      SELECT
+        c.id AS category_id,
+        c.name,
+        SUM(t.amount) AS amount,
+        COUNT(*) AS count
+      FROM transactions t
+      JOIN categories c ON t.category_id = c.id
+      WHERE t.transaction_date >= ?1 AND t.transaction_date <= ?2
+        AND t.type = 'expense'
+        AND c.id IS NOT NULL
+      GROUP BY c.id
+      ORDER BY amount DESC
+    `,
+    from,
+    to
+  );
+
+  const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
+  return rows.map((r) => ({
+    ...r,
+    percentage: totalAmount === 0 ? 0 : (r.amount / totalAmount) * 100
+  }));
+}
+
 export async function getCategoryReport(env: Env, from: string, to: string, categoryId?: string): Promise<CategoryReportData> {
-  const transactions = await listTransactions(env, { from, to, limit: 1000 });
-
+  // If drill-down into specific category, return transactions for that category
   if (categoryId) {
-    const categoryTransactions = transactions.filter((t) => t.category_id === categoryId);
-    return { categories: [], transactions: categoryTransactions };
+    // Use listTransactions for drill-down with its cursor-based pagination
+    const transactions = await listTransactions(env, { from, to, category_id: categoryId, limit: 200 });
+    return { categories: [], transactions };
   }
 
-  const map = new Map<string, { category_id: string; name: string; amount: number; count: number }>();
-  let totalAmount = 0;
-
-  for (const transaction of transactions) {
-    if (!isReportableExpense(transaction.type) || !transaction.category_id) {
-      continue;
-    }
-    const id = transaction.category_id;
-    const name = transaction.category_name ?? "Uncategorized";
-    const current = map.get(id) ?? { category_id: id, name, amount: 0, count: 0 };
-    current.amount += transaction.amount;
-    current.count += 1;
-    totalAmount += transaction.amount;
-    map.set(id, current);
-  }
-
-  const categories = [...map.values()]
-    .map((cat) => ({
-      ...cat,
-      percentage: totalAmount === 0 ? 0 : (cat.amount / totalAmount) * 100
-    }))
-    .sort((a, b) => b.amount - a.amount);
-
+  // Use SQL aggregation for category summary - no 200 limit issue
+  const categories = await getCategoryTotalsFromDb(env, from, to);
   return { categories };
 }
 
 export async function getMemberReport(env: Env, from: string, to: string): Promise<MemberReportData> {
-  const transactions = await listTransactions(env, { from, to, limit: 1000 });
+  // Use SQL aggregation to get member totals with category breakdown
+  const rows = await all<{
+    member_id: string;
+    member_name: string;
+    category_id: string | null;
+    category_name: string | null;
+    amount: number;
+  }>(
+    env.DB,
+    `
+      SELECT
+        m.id AS member_id,
+        m.name AS member_name,
+        c.id AS category_id,
+        c.name AS category_name,
+        COALESCE(SUM(t.amount), 0) AS amount
+      FROM transactions t
+      JOIN members m ON t.member_id = m.id
+      LEFT JOIN categories c ON t.category_id = c.id
+      WHERE t.transaction_date >= ?1 AND t.transaction_date <= ?2
+        AND t.type = 'expense'
+      GROUP BY m.id, c.id
+      ORDER BY m.id, amount DESC
+    `,
+    from,
+    to
+  );
 
-  const memberMap = new Map<
-    string,
-    { member_id: string; name: string; total: number; categories: Map<string, { category_id: string; category_name: string; amount: number }> }
-  >();
-  let totalAmount = 0;
+  // Group by member
+  const memberMap = new Map<string, {
+    member_id: string;
+    name: string;
+    total: number;
+    categories: { category_id: string; category_name: string; amount: number }[];
+  }>();
+  let grandTotal = 0;
 
-  for (const transaction of transactions) {
-    if (!isReportableExpense(transaction.type)) {
-      continue;
+  for (const row of rows) {
+    let member = memberMap.get(row.member_id);
+    if (!member) {
+      member = { member_id: row.member_id, name: row.member_name, total: 0, categories: [] };
+      memberMap.set(row.member_id, member);
     }
-
-    const memberId = transaction.member_id;
-    const memberName = transaction.member_name;
-    const categoryId = transaction.category_id ?? "uncategorized";
-    const categoryName = transaction.category_name ?? "Uncategorized";
-
-    const member = memberMap.get(memberId) ?? {
-      member_id: memberId,
-      name: memberName,
-      total: 0,
-      categories: new Map()
-    };
-
-    member.total += transaction.amount;
-    totalAmount += transaction.amount;
-
-    const category = member.categories.get(categoryId) ?? { category_id: categoryId, category_name: categoryName, amount: 0 };
-    category.amount += transaction.amount;
-    member.categories.set(categoryId, category);
-
-    memberMap.set(memberId, member);
+    member.total += row.amount;
+    grandTotal += row.amount;
+    member.categories.push({
+      category_id: row.category_id ?? "uncategorized",
+      category_name: row.category_name ?? "Uncategorized",
+      amount: row.amount
+    });
   }
 
   const members = [...memberMap.values()]
@@ -279,8 +349,8 @@ export async function getMemberReport(env: Env, from: string, to: string): Promi
       member_id: member.member_id,
       name: member.name,
       total: member.total,
-      percentage: totalAmount === 0 ? 0 : (member.total / totalAmount) * 100,
-      categories: [...member.categories.values()].sort((a, b) => b.amount - a.amount)
+      percentage: grandTotal === 0 ? 0 : (member.total / grandTotal) * 100,
+      categories: member.categories.sort((a, b) => b.amount - a.amount)
     }))
     .sort((a, b) => b.total - a.total);
 

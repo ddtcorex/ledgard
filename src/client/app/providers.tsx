@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryCache, QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { createContext, useContext, useState } from "react";
 import { I18nProvider, useI18n } from "../shared/i18n/I18nProvider";
-import { apiClient } from "../shared/api/client";
+import { apiClient, ApiClientError } from "../shared/api/client";
 import type { Member } from "../../shared/types/domain";
 import { TransactionModalProvider } from "../shared/components/TransactionModal";
+import { notifySessionExpired, SessionExpiredProvider } from "../shared/components/SessionExpired";
 
 interface UserContextValue {
   currentUser: Member | null;
@@ -141,7 +142,16 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
             refetchOnWindowFocus: false,
             retry: 1
           }
-        }
+        },
+        queryCache: new QueryCache({
+          onError: (error) => {
+            // Safety net: catch 401 errors that slip through fetchApi
+            // (e.g., from mutations or custom fetch logic)
+            if (error instanceof ApiClientError && error.status === 401) {
+              notifySessionExpired();
+            }
+          }
+        })
       })
   );
 
@@ -149,11 +159,13 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <UserProvider>
         <I18nProvider>
-          <ConfirmProvider>
-            <TransactionModalProvider>
-              {children}
-            </TransactionModalProvider>
-          </ConfirmProvider>
+          <SessionExpiredProvider>
+            <ConfirmProvider>
+              <TransactionModalProvider>
+                {children}
+              </TransactionModalProvider>
+            </ConfirmProvider>
+          </SessionExpiredProvider>
         </I18nProvider>
       </UserProvider>
     </QueryClientProvider>

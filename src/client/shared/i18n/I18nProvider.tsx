@@ -231,7 +231,10 @@ const dictionaries: Record<LocaleCode, Dictionary> = {
     categoryManagementMovedToSettings: "Category management has been moved to Settings. Go to Settings > Categories to manage your categories.",
     total: "Total",
     transaction: "transaction",
-    transactions: "transactions"
+    transactions: "transactions",
+    sessionExpiredTitle: "Session Expired",
+    sessionExpiredMessage: "Your login session has expired. Please re-login to continue.",
+    reLogin: "Re-login"
   },
   vi: {
     appName: "Sổ thu chi",
@@ -461,7 +464,10 @@ const dictionaries: Record<LocaleCode, Dictionary> = {
     categoryManagementMovedToSettings: "Quản lý danh mục đã được chuyển sang Cài đặt. Vào Cài đặt > Danh mục để quản lý danh mục của bạn.",
     total: "Tổng",
     transaction: "giao dịch",
-    transactions: "giao dịch"
+    transactions: "giao dịch",
+    sessionExpiredTitle: "Phiên đã hết hạn",
+    sessionExpiredMessage: "Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại để tiếp tục.",
+    reLogin: "Đăng nhập lại"
   }
 };
 

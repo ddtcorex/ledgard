@@ -17,6 +17,7 @@ import type {
   Transaction,
   TransactionView
 } from "../../../shared/types/domain";
+import { notifySessionExpired } from "../components/SessionExpired";
 
 export class ApiClientError extends Error {
   constructor(
@@ -29,13 +30,28 @@ export class ApiClientError extends Error {
 }
 
 export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, {
-    headers: {
-      "content-type": "application/json",
-      ...(init?.headers ?? {})
-    },
-    ...init
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      headers: {
+        "content-type": "application/json",
+        ...(init?.headers ?? {})
+      },
+      ...init
+    });
+  } catch {
+    // Network error — likely CF Access redirecting to login page
+    // (browser follows the redirect but the response isn't valid JSON)
+    notifySessionExpired();
+    throw new ApiClientError("Session expired", "UNAUTHORIZED", 401);
+  }
+
+  // Cloudflare Access may return 401 directly
+  if (response.status === 401) {
+    notifySessionExpired();
+    throw new ApiClientError("Session expired", "UNAUTHORIZED", 401);
+  }
+
   const body = (await response.json().catch(() => null)) as { data?: unknown; error?: { code?: string; message?: string } } | null;
   if (!response.ok) {
     throw new ApiClientError(body?.error?.message ?? "Request failed", body?.error?.code ?? "REQUEST_FAILED", response.status);
